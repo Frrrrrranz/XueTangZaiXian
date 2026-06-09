@@ -1,0 +1,30 @@
+{
+  "manifest_version": 3,
+  "name": "极简网页答题助手",
+  "version": "1.0.0",
+  "description": "注入在网课页面上的常驻极简悬浮窗，支持选中文本自动搜题与快捷粘贴搜题",
+  "permissions": [
+    "storage"
+  ],
+  "host_permissions": [
+    "http://api.tikuhai.com/*",
+    "http://cx.icodef.com/*",
+    "https://tk.enncy.cn/*",
+    "https://api.muketool.com/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "*://*.xuetangx.com/*",
+        "*://*.chaoxing.com/*",
+        "*://*.xuexitong.com/*"
+      ],
+      "js": ["assets/content.js"],
+      "run_at": "document_end"
+    }
+  ],
+  "background": {
+    "service_worker": "assets/background.js",
+    "type": "module"
+  }
+}
