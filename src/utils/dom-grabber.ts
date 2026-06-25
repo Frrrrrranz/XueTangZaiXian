@@ -129,10 +129,13 @@ export function grabCorrectAnswer(doc: Document): string | null {
         // 单选/多选：span 有字母文字
         collectedLetters.push(normalizeAnswer(text));
       } else if (sibling.classList?.contains("radio_xtb")) {
-        // 判断题：span 无文字，但 class 里含 "true"（正确=A）或 "false"（错误=B）
+        // 判断题：span 无文字，判断其类名。包含 true 等正确标识则为 A，否则兜底判定为 B
         const cls = sibling.className;
-        if (/\btrue\b/.test(cls)) collectedLetters.push("A");
-        else if (/\bfalse\b/.test(cls)) collectedLetters.push("B");
+        if (/\btrue\b/.test(cls) || /\bright\b/.test(cls) || /\bcorrect\b/.test(cls)) {
+          collectedLetters.push("A");
+        } else {
+          collectedLetters.push("B");
+        }
       }
       sibling = sibling.nextElementSibling as HTMLElement | null;
     }
