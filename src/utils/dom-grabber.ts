@@ -106,20 +106,36 @@ export function grabCurrentQuestion(doc: Document): Question | null {
  * 返回大写字母字符串（单选 "A"，多选 "AB"），无法抓取则返回 null。
  */
 export function grabCorrectAnswer(doc: Document): string | null {
-  // ── 策略 1：p.myanswer → nextElementSibling ─────────────────────────────
-  // DOM: <p class="myanswer">正确答案</p><span class="radio_xtb ...">A</span>
+  // ── 策略 1：p.myanswer → 遍历所有兄弟节点收集字母 ──────────────────────
+  // DOM（单选）: <p class="myanswer">正确答案</p><span class="radio_xtb">A</span>
+  // DOM（多选）: <p class="myanswer">正确答案</p><span>A</span><span>B</span><span>C</span>
+  // DOM（判断）: <p class="myanswer">正确答案</p><span class="radio_xtb panduan ... true"></span>
+  //             判断题 span 的 innerText 为空，答案藏在 class 的 "true"/"false" 词中
+  // NOTE: 必须收集 ALL 匹配兄弟，不能遇到第一个就 return，否则多选只拿到第一个字母
   const myAnswerLabel = doc.querySelector("p.myanswer") as HTMLElement | null;
   if (myAnswerLabel) {
+    const collectedLetters: string[] = [];
     let sibling = myAnswerLabel.nextElementSibling as HTMLElement | null;
     while (sibling) {
       // span 内文字可能含换行空白，需 replace 清洗
       const text = sibling.innerText?.trim().replace(/\s+/g, "");
       if (text && /^[A-Da-d正确错误]+$/.test(text)) {
-        return normalizeAnswer(text);
+        // 单选/多选：span 有字母文字
+        collectedLetters.push(normalizeAnswer(text));
+      } else if (sibling.classList?.contains("radio_xtb")) {
+        // 判断题：span 无文字，但 class 里含 "true"（正确=A）或 "false"（错误=B）
+        const cls = sibling.className;
+        if (/\btrue\b/.test(cls)) collectedLetters.push("A");
+        else if (/\bfalse\b/.test(cls)) collectedLetters.push("B");
       }
       sibling = sibling.nextElementSibling as HTMLElement | null;
     }
+    // 字母按 A→B→C 排序后拼接，保证多选答案顺序一致
+    if (collectedLetters.length > 0) {
+      return collectedLetters.sort().join("");
+    }
   }
+
 
   // ── 策略 2：含 padding-top 的内嵌 .answerList 容器（多选题可能有多个答案 span）
   // DOM: <div class="answerList" style="padding-top: 27px;">...</div>
