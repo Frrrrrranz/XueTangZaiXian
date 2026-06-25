@@ -46,4 +46,29 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     // 返回 true，声明该 response 将会异步返回，防止消息连接被强制关闭
     return true;
   }
+
+  // NOTE: DOWNLOAD_MD 消息由 content script 发出，携带 Markdown 文本。
+  // background 作为代理调用 chrome.downloads，因为 content script 无法直接访问该 API。
+  if (message.type === "DOWNLOAD_MD") {
+    const { content, filename } = message as { content: string; filename: string };
+
+    // 将 Markdown 字符串编码为 UTF-8 的 data URL，避免中文乱码
+    const encoded = encodeURIComponent(content);
+    const dataUrl = `data:text/markdown;charset=utf-8,${encoded}`;
+
+    chrome.downloads.download(
+      { url: dataUrl, filename, saveAs: false },
+      (downloadId) => {
+        if (chrome.runtime.lastError) {
+          sendResponse({ success: false, error: chrome.runtime.lastError.message });
+        } else {
+          sendResponse({ success: true, downloadId });
+        }
+      }
+    );
+
+    // 异步响应，必须返回 true
+    return true;
+  }
 });
+

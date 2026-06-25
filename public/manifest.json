@@ -4,7 +4,8 @@
   "version": "1.0.0",
   "description": "注入在网课页面上的常驻极简悬浮窗，支持选中文本自动搜题与快捷粘贴搜题",
   "permissions": [
-    "storage"
+    "storage",
+    "downloads"
   ],
   "host_permissions": [
     "http://api.tikuhai.com/*",

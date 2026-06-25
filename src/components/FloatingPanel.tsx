@@ -1,14 +1,18 @@
 import React, { useState, useEffect, useRef } from "react";
-import { grabCurrentQuestion, selectOptionByAnswer, clickSubmitQuestion, clickNextQuestion, type Question } from "../utils/dom-grabber";
+import { grabCurrentQuestion, grabCorrectAnswer, selectOptionByAnswer, clickSubmitQuestion, clickNextQuestion, type Question } from "../utils/dom-grabber";
+import { addQuestion, clearAll, exportToMarkdown } from "../utils/question-collector";
 
 export const FloatingPanel: React.FC = () => {
   // 状态显示文本与连答状态
   const [statusText, setStatusText] = useState("待答题");
   const [autoNext, setAutoNext] = useState(false);
-  
+
+  // 题目收集计数（用于触发 UI 重渲染）
+  const [collectedCount, setCollectedCount] = useState(0);
+
   // 记录最后一次回答的题目，避免在连答轮询中重复提交相同题目
   const lastQuestionTitle = useRef("");
-  
+
   // 悬浮面板位置状态 (基于屏幕右下角定位)
   const [position, setPosition] = useState({ x: 30, y: 100 });
   const isDragging = useRef(false);
@@ -52,7 +56,7 @@ export const FloatingPanel: React.FC = () => {
           const answer = response.answer;
           // 执行页面勾选
           const clickSuccess = selectOptionByAnswer(q, answer);
-          
+
           if (clickSuccess) {
             setStatusText(`已勾选 [${answer}]`);
 
@@ -62,10 +66,10 @@ export const FloatingPanel: React.FC = () => {
               setTimeout(() => {
                 try {
                   const submitClicked = clickSubmitQuestion(document);
-                  
+
                   if (submitClicked) {
                     setStatusText("已提交，准备跳转...");
-                    
+
                     // 2. 只有在成功点击提交后，才在 2000 毫秒后自动执行翻页
                     setTimeout(() => {
                       try {
@@ -82,7 +86,7 @@ export const FloatingPanel: React.FC = () => {
                         setAutoNext(false);
                       }
                     }, 2000);
-                    
+
                   } else {
                     // 若点击提交失败，中断连答，保护现场不跳页
                     setStatusText("自动提交失败，停止连答。");
@@ -117,7 +121,61 @@ export const FloatingPanel: React.FC = () => {
     runAnswerFlow(q);
   };
 
-  // 4. 拖拽定位处理
+  // 4. 抓取当前题目并追加到内存列表（直接读取页面 DOM 中已展示的"正确答案"）
+  const handleCaptureQuestion = () => {
+    const q = grabCurrentQuestion(document);
+    if (!q) {
+      setStatusText("未检测到题目");
+      return;
+    }
+
+    // 直接从 DOM 中尝试抓取已展示的正确答案，无需调用 AI
+    const domAnswer = grabCorrectAnswer(document);
+
+    addQuestion(q.title, q.options, domAnswer ?? undefined);
+    // 函数式更新防止异步闭包捕获旧值
+    setCollectedCount((prev) => prev + 1);
+
+    if (domAnswer) {
+      setStatusText(`已收集，答案: ${domAnswer}`);
+    } else {
+      // 抓取失败：告知用户需要手动在导出的 MD 里填写答案
+      setStatusText("已收集，答案抓取失败请手填");
+    }
+  };
+
+  // 5. 导出已收集的题目为 Markdown 文件，通过 background 代理触发下载
+  const handleExportMd = () => {
+    if (collectedCount === 0) {
+      setStatusText("暂无题目可导出");
+      return;
+    }
+
+    const mdContent = exportToMarkdown();
+    // 文件名加时间戳避免与历史文件冲突，方便后续手动合并
+    const timestamp = new Date().toISOString().slice(0, 10);
+    const filename = `题目_${timestamp}.md`;
+
+    chrome.runtime.sendMessage(
+      { type: "DOWNLOAD_MD", content: mdContent, filename },
+      (response) => {
+        if (chrome.runtime.lastError || !response?.success) {
+          setStatusText("导出失败，请检查权限");
+        } else {
+          setStatusText(`已下载 ${collectedCount} 道题`);
+        }
+      }
+    );
+  };
+
+  // 6. 清空内存中的收集列表
+  const handleClearCollected = () => {
+    clearAll();
+    setCollectedCount(0);
+    setStatusText("列表已清空");
+  };
+
+  // 7. 拖拽定位处理
   const handleDragStart = (e: React.MouseEvent) => {
     isDragging.current = true;
     dragStart.current = { x: e.clientX, y: e.clientY };
@@ -155,7 +213,7 @@ export const FloatingPanel: React.FC = () => {
     >
       {/* 极简半透明磨砂面板 */}
       <div className="flex flex-col gap-2 rounded-xl border border-slate-700/50 bg-slate-900/90 p-3 shadow-2xl backdrop-blur-md">
-        
+
         {/* 头部拖拽手柄区 */}
         <div
           onMouseDown={handleDragStart}
@@ -167,7 +225,7 @@ export const FloatingPanel: React.FC = () => {
           </span>
         </div>
 
-        {/* 控制操作区 (全文字无图标按钮) */}
+        {/* 答题操作区 */}
         <div className="flex gap-2 text-xs">
           <button
             onClick={handleManualAnswer}
@@ -176,7 +234,7 @@ export const FloatingPanel: React.FC = () => {
           >
             自动答当前题
           </button>
-          
+
           <button
             onClick={() => setAutoNext(!autoNext)}
             className={`flex-1 rounded px-3 py-1.5 font-bold active:scale-95 transition-all cursor-pointer ${
@@ -187,6 +245,48 @@ export const FloatingPanel: React.FC = () => {
           >
             {autoNext ? "停止自动连答" : "开启自动连答"}
           </button>
+        </div>
+
+        {/* 分割线 */}
+        <div className="border-t border-slate-700/60" />
+
+        {/* 题目收集区 */}
+        <div className="flex flex-col gap-1.5">
+          {/* 收集状态行 */}
+          <div className="flex items-center justify-between text-[10px] text-slate-500">
+            <span>题目收集</span>
+            {collectedCount > 0 && (
+              <span className="bg-amber-600/30 text-amber-400 px-1.5 py-0.5 rounded font-mono">
+                已收集 {collectedCount} 道
+              </span>
+            )}
+          </div>
+
+          {/* 抓取当前题按钮 */}
+          <button
+            onClick={handleCaptureQuestion}
+            className="w-full rounded bg-amber-600 px-3 py-1.5 text-xs font-bold hover:bg-amber-500 active:scale-95 transition-all cursor-pointer"
+          >
+            📋 抓取当前题
+          </button>
+
+          {/* 导出与清空（仅在有数据时显示） */}
+          {collectedCount > 0 && (
+            <div className="flex gap-2 text-xs">
+              <button
+                onClick={handleExportMd}
+                className="flex-1 rounded bg-teal-700 px-3 py-1.5 font-bold hover:bg-teal-600 active:scale-95 transition-all cursor-pointer"
+              >
+                ⬇️ 导出 MD
+              </button>
+              <button
+                onClick={handleClearCollected}
+                className="flex-1 rounded bg-slate-700 px-3 py-1.5 font-bold hover:bg-slate-600 text-slate-300 active:scale-95 transition-all cursor-pointer"
+              >
+                🗑️ 清空列表
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </div>

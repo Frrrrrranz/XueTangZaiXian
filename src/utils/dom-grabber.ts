@@ -88,6 +88,80 @@ export function grabCurrentQuestion(doc: Document): Question | null {
 }
 
 /**
+ * 从页面"正确答案"区域直接抓取答案字母（无需调用 AI）。
+ *
+ * 真实 DOM 结构（由探针确认）：
+ *   .answerList                          ← 外层作答区
+ *     span.radio_xtb.active              ← 已选答案（用户作答，含 active 类）
+ *     ...
+ *     .answerList[style*=padding-top]    ← 内嵌的正确答案区
+ *       p.myanswer                       ← 文本"正确答案"
+ *       span.radio_xtb                   ← 正确答案字母（无 active 类）
+ *
+ * 策略优先级：
+ *   1. p.myanswer → nextElementSibling（最精准，直接命中正确答案 span）
+ *   2. .answerList[style*=padding-top] 内第一个 .radio_xtb（同上，容器级定位）
+ *   3. 左侧题目区 .leftradio .radio_xtb.active（作答区高亮选项，兜底）
+ *
+ * 返回大写字母字符串（单选 "A"，多选 "AB"），无法抓取则返回 null。
+ */
+export function grabCorrectAnswer(doc: Document): string | null {
+  // ── 策略 1：p.myanswer → nextElementSibling ─────────────────────────────
+  // DOM: <p class="myanswer">正确答案</p><span class="radio_xtb ...">A</span>
+  const myAnswerLabel = doc.querySelector("p.myanswer") as HTMLElement | null;
+  if (myAnswerLabel) {
+    let sibling = myAnswerLabel.nextElementSibling as HTMLElement | null;
+    while (sibling) {
+      // span 内文字可能含换行空白，需 replace 清洗
+      const text = sibling.innerText?.trim().replace(/\s+/g, "");
+      if (text && /^[A-Da-d正确错误]+$/.test(text)) {
+        return normalizeAnswer(text);
+      }
+      sibling = sibling.nextElementSibling as HTMLElement | null;
+    }
+  }
+
+  // ── 策略 2：含 padding-top 的内嵌 .answerList 容器（多选题可能有多个答案 span）
+  // DOM: <div class="answerList" style="padding-top: 27px;">...</div>
+  const correctBox = Array.from(
+    doc.querySelectorAll(".answerList[style*='padding-top']")
+  ).find((el) => el.querySelector("p.myanswer")) as HTMLElement | undefined;
+
+  if (correctBox) {
+    const spans = Array.from(correctBox.querySelectorAll(".radio_xtb")) as HTMLElement[];
+    const letters = spans
+      .map((el) => el.innerText?.trim().replace(/\s+/g, ""))
+      .filter((t) => t && /^[A-D]$/.test(t))
+      .sort();
+    if (letters.length > 0) return letters.join("");
+  }
+
+  // ── 策略 3：左侧题目区已高亮选项（.leftradio .radio_xtb.active）─────────
+  // 探针3 数据: class="radio_xtb unselectable active" 父class="leftradio showUntil"
+  const leftActives = Array.from(
+    doc.querySelectorAll(".leftradio .radio_xtb.active")
+  ) as HTMLElement[];
+  const leftLetters = leftActives
+    .map((el) => el.innerText?.trim().replace(/\s+/g, ""))
+    .filter((t) => t && /^[A-D]$/.test(t))
+    .sort();
+  if (leftLetters.length > 0) return leftLetters.join("");
+
+  // 三种策略均失败
+  return null;
+}
+
+/**
+ * 将抓取到的答案文本标准化为大写字母。
+ * 支持 "正确" -> "A"（判断题），"错误" -> "B"（判断题），其他直接大写。
+ */
+function normalizeAnswer(raw: string): string {
+  if (raw === "正确") return "A";
+  if (raw === "错误") return "B";
+  return raw.toUpperCase().replace(/[^A-D]/g, "");
+}
+
+/**
  * 根据 AI 返回的答案（如 A、B、C、D、AB 等），模拟勾选页面选项
  */
 export function selectOptionByAnswer(q: Question, answer: string): boolean {
