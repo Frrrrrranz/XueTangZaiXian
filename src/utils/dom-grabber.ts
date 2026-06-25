@@ -64,16 +64,22 @@ export function grabCurrentQuestion(doc: Document): Question | null {
     }
   }
 
-  // 3. 判断题特殊处理：若左侧抓不到选项，但右侧作答区存在判断按钮 (radio_xtb)
+  // 3. 判断题特殊处理：若左侧抓不到选项，但右侧作答区存在判断按钮
+  // NOTE: 使用 .panduan 限定只匹配判断题专属按钮（单选/多选按钮无此类名）
+  // NOTE: 条件改为 >= 2，因为正确答案展示后会再增加一个 .radio_xtb.panduan span
+  //       导致总数从 2 变为 3，原来的 === 2 在答案展示状态下会失败
   if (options.length === 0) {
-    const radioElements = Array.from(doc.querySelectorAll(".answer .radio_xtb")) as HTMLElement[];
-    if (radioElements.length === 2) {
+    const radioElements = Array.from(
+      doc.querySelectorAll(".answer .radio_xtb.panduan")
+    ) as HTMLElement[];
+    if (radioElements.length >= 2) {
       options.push("A. 正确");
       options.push("B. 错误");
       optionElements.push(radioElements[0]); // A 对应对 (√)
       optionElements.push(radioElements[1]); // B 对应错 (×)
     }
   }
+
   
   // 若题目和选项都为空，则认为抓取失败
   if (options.length === 0) {
