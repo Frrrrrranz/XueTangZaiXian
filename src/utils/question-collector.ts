@@ -67,7 +67,7 @@ export function exportToMarkdown(): string {
   const lines: string[] = [
     "# 复习题目",
     "",
-    `> 导出时间：${exportTime}　共 ${collectedQuestions.length} 道题`,
+    `> 导出时间：${exportTime}  共 ${collectedQuestions.length} 道题`,
     "",
     "---",
     "",

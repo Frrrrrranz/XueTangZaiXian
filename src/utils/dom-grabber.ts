@@ -28,7 +28,7 @@ function triggerNativeClick(el: HTMLElement) {
   // 3. 辅助触发获取焦点
   try {
     el.focus();
-  } catch (e) {
+  } catch {
     // 忽略不支持 focus 属性的元素报错
   }
 }
@@ -125,7 +125,7 @@ export function grabCorrectAnswer(doc: Document): string | null {
     while (sibling) {
       // span 内文字可能含换行空白，需 replace 清洗
       const text = sibling.innerText?.trim().replace(/\s+/g, "");
-      if (text && /^[A-Da-d正确错误]+$/.test(text)) {
+      if (text && /^[A-Za-z正确错误]+$/.test(text)) {
         // 单选/多选：span 有字母文字
         collectedLetters.push(normalizeAnswer(text));
       } else if (sibling.classList?.contains("radio_xtb")) {
@@ -153,7 +153,7 @@ export function grabCorrectAnswer(doc: Document): string | null {
     const spans = Array.from(correctBox.querySelectorAll(".radio_xtb")) as HTMLElement[];
     const letters = spans
       .map((el) => el.innerText?.trim().replace(/\s+/g, ""))
-      .filter((t) => t && /^[A-D]$/.test(t))
+      .filter((t) => t && /^[A-Z]$/.test(t))
       .sort();
     if (letters.length > 0) return letters.join("");
   }
@@ -165,7 +165,7 @@ export function grabCorrectAnswer(doc: Document): string | null {
   ) as HTMLElement[];
   const leftLetters = leftActives
     .map((el) => el.innerText?.trim().replace(/\s+/g, ""))
-    .filter((t) => t && /^[A-D]$/.test(t))
+    .filter((t) => t && /^[A-Z]$/.test(t))
     .sort();
   if (leftLetters.length > 0) return leftLetters.join("");
 
@@ -180,7 +180,7 @@ export function grabCorrectAnswer(doc: Document): string | null {
 function normalizeAnswer(raw: string): string {
   if (raw === "正确") return "A";
   if (raw === "错误") return "B";
-  return raw.toUpperCase().replace(/[^A-D]/g, "");
+  return raw.toUpperCase().replace(/[^A-Z]/g, "");
 }
 
 /**
@@ -191,7 +191,7 @@ export function selectOptionByAnswer(q: Question, answer: string): boolean {
   
   let success = false;
   // 提取答案文本中的所有大写字母选项 (支持多选和判断)
-  const letters = answer.toUpperCase().match(/[A-D]/g);
+  const letters = answer.toUpperCase().match(/[A-Z]/g);
   
   if (letters) {
     const doc = document;
