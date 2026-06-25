@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "极简网页答题助手",
+  "name": "学堂在线刷课助手",
   "version": "1.0.0",
-  "description": "注入在网课页面上的常驻极简悬浮窗，支持选中文本自动搜题与快捷粘贴搜题",
+  "description": "学堂在线 AI 自动答题插件，支持 DeepSeek 智能作答、题目收集与 Markdown 导出复习。",
   "permissions": [
     "storage",
     "downloads"
