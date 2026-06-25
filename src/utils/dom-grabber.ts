@@ -260,34 +260,54 @@ export function clickSubmitQuestion(doc: Document): boolean {
 }
 
 /**
- * 寻找并模拟点击“下一题”按钮以实现连答 (优化版：基于 total 标签定位右侧翻页箭头，全线接入双保险点击)
+ * 寻找并模拟点击"下一题"按钮以实现连答
+ *
+ * 修复说明：原来用 querySelectorAll("button, div, span") 后 find() 会命中
+ * 父容器 div.btnCon（它的 innerText 也等于"下一题"），导致点击容器而非真实按钮。
+ * 现改为优先只在 <button> 标签中搜索，确保命中 button.btn.buttonhoverblank。
  */
 export function clickNextQuestion(doc: Document): boolean {
-  const elements = Array.from(doc.querySelectorAll("button, div, span")) as HTMLElement[];
-  
-  // 1. 优先寻找文本是 "下一题"、"下一步" 的实体按钮
-  const nextBtn = elements.find(el => {
-    const text = el.innerText ? el.innerText.trim() : "";
-    return text === "下一题" || text === "下一步" || text === "下一单元";
+  const NEXT_LABELS = ["下一题", "下一步", "下一单元"];
+
+  // 1. 最优先：仅在真实 button 标签中匹配，彻底避免命中父容器
+  //    探针确认：<button class="btn unselectable buttonhoverblank"> 下一题
+  const buttons = Array.from(doc.querySelectorAll("button")) as HTMLElement[];
+  const nextBtn = buttons.find(btn => {
+    const text = btn.innerText?.trim();
+    return text !== undefined && NEXT_LABELS.includes(text);
   });
-  
+
   if (nextBtn) {
-    console.log("%c【连答跳转调试】找到‘下一题’按钮，执行双保险点击...", "color: #3b82f6;");
+    console.log("%c【连答跳转调试】找到'下一题'按钮（button 标签），执行双保险点击...", "color: #3b82f6;");
     triggerNativeClick(nextBtn);
     return true;
   }
-  
-  // 2. 兜底方案：寻找类名包含 "total" 且带有斜杠的页码总数 span，点击它的右侧兄弟节点
-  const totalEl = elements.find(el => {
+
+  // 2. 兜底：在 div/span 中找，但要求是叶子节点（children.length === 0）以排除容器
+  const leafEls = Array.from(doc.querySelectorAll("div, span")) as HTMLElement[];
+  const leafNextBtn = leafEls.find(el => {
+    const text = el.innerText?.trim();
+    return text !== undefined && NEXT_LABELS.includes(text) && el.children.length === 0;
+  });
+
+  if (leafNextBtn) {
+    console.log("%c【连答跳转调试】通过叶子节点找到'下一题'，执行双保险点击...", "color: #3b82f6;");
+    triggerNativeClick(leafNextBtn);
+    return true;
+  }
+
+  // 3. 最终兜底：通过页码指示器（total 类名 + 含"/"）定位右箭头
+  const allEls = Array.from(doc.querySelectorAll("span, div")) as HTMLElement[];
+  const totalEl = allEls.find(el => {
     const className = el.className;
     return typeof className === "string" && className.includes("total") && el.innerText.includes("/");
   });
-  
+
   if (totalEl && totalEl.nextElementSibling) {
-    console.log("%c【连答跳转调试】未找到文字按钮，通过页码指示器定位到右箭头 (>)，执行双保险点击...", "color: #3b82f6;");
+    console.log("%c【连答跳转调试】通过页码指示器定位右箭头(>)，执行双保险点击...", "color: #3b82f6;");
     triggerNativeClick(totalEl.nextElementSibling as HTMLElement);
     return true;
   }
-  
+
   return false;
 }
