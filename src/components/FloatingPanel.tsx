@@ -13,6 +13,13 @@ export const FloatingPanel: React.FC = () => {
   // 记录最后一次回答的题目，避免在连答轮询中重复提交相同题目
   const lastQuestionTitle = useRef("");
 
+  // 连续抓取状态
+  const [autoCaptureRunning, setAutoCaptureRunning] = useState(false);
+  // 连续抓取时记录上一题题干，防止在翻页期间重复抓取同一道题
+  const lastCaptureTitleRef = useRef("");
+  // 本次连续抓取计数（用于在闭包回调中读取最新值，避免 stale closure）
+  const captureCountRef = useRef(0);
+
   // 悬浮面板位置状态 (基于屏幕右下角定位)
   const [position, setPosition] = useState({ x: 30, y: 100 });
   const isDragging = useRef(false);
@@ -33,6 +40,40 @@ export const FloatingPanel: React.FC = () => {
 
     return () => clearInterval(intervalId);
   }, [autoNext]);
+
+  // 连续抓取监听器：开启后每 1.2 秒轮询，检测到新题立即抓取并自动翻页，直到末尾
+  useEffect(() => {
+    if (!autoCaptureRunning) return;
+    // 重置本次计数
+    captureCountRef.current = 0;
+
+    const intervalId = setInterval(() => {
+      const q = grabCurrentQuestion(document);
+      // 题目未加载、或题干与上一次相同（翻页还未完成）则跳过本次轮询
+      if (!q?.title || q.title === lastCaptureTitleRef.current) return;
+
+      // 检测到新题：先抓取
+      const domAnswer = grabCorrectAnswer(document);
+      addQuestion(q.title, q.options, domAnswer ?? undefined);
+      captureCountRef.current += 1;
+      // 函数式更新防止异步闭包捕获旧值
+      setCollectedCount((prev) => prev + 1);
+      lastCaptureTitleRef.current = q.title;
+      setStatusText(`连续抓取 [${domAnswer ?? "待手填"}]`);
+
+      // 抓完后延迟 1 秒再翻页，给 DOM 留出稳定时间
+      setTimeout(() => {
+        const nextClicked = clickNextQuestion(document);
+        if (!nextClicked) {
+          // 无下一题 → 已到末尾，自动停止
+          setStatusText(`✅ 完成！本次 ${captureCountRef.current} 道`);
+          setAutoCaptureRunning(false);
+        }
+      }, 1000);
+    }, 1200);
+
+    return () => clearInterval(intervalId);
+  }, [autoCaptureRunning]);
 
   // 2. 执行答题流程：提取、请求 API、勾选、决定是否连答
   const runAnswerFlow = async (q: Question) => {
@@ -142,6 +183,15 @@ export const FloatingPanel: React.FC = () => {
       // 抓取失败：告知用户需要手动在导出的 MD 里填写答案
       setStatusText("已收集，答案抓取失败请手填");
     }
+  };
+
+  // 连续抓取开关：开启时重置抓取标记确保当前题也会被纳入
+  const handleToggleAutoCapture = () => {
+    if (!autoCaptureRunning) {
+      // 重置上次题干记录，保证当前页的题目会被立即捕获
+      lastCaptureTitleRef.current = "";
+    }
+    setAutoCaptureRunning((prev) => !prev);
   };
 
   // 5. 导出已收集的题目为 Markdown 文件，通过 background 代理触发下载
@@ -262,13 +312,26 @@ export const FloatingPanel: React.FC = () => {
             )}
           </div>
 
-          {/* 抓取当前题按钮 */}
-          <button
-            onClick={handleCaptureQuestion}
-            className="w-full rounded bg-amber-600 px-3 py-1.5 text-xs font-bold hover:bg-amber-500 active:scale-95 transition-all cursor-pointer"
-          >
-            📋 抓取当前题
-          </button>
+          {/* 抓取按钮行：单题抓取 + 连续抓取 */}
+          <div className="flex gap-2 text-xs">
+            <button
+              onClick={handleCaptureQuestion}
+              disabled={autoCaptureRunning}
+              className="flex-1 rounded bg-amber-600 px-3 py-1.5 font-bold hover:bg-amber-500 active:scale-95 disabled:bg-slate-800 disabled:text-slate-500 disabled:scale-100 transition-all cursor-pointer"
+            >
+              📋 抓取当前题
+            </button>
+            <button
+              onClick={handleToggleAutoCapture}
+              className={`flex-1 rounded px-3 py-1.5 font-bold active:scale-95 transition-all cursor-pointer ${
+                autoCaptureRunning
+                  ? "bg-rose-600 hover:bg-rose-500 text-white"
+                  : "bg-amber-800 hover:bg-amber-700 text-amber-200"
+              }`}
+            >
+              {autoCaptureRunning ? "⏹ 停止" : "⏩ 连续抓取"}
+            </button>
+          </div>
 
           {/* 导出与清空（仅在有数据时显示） */}
           {collectedCount > 0 && (
